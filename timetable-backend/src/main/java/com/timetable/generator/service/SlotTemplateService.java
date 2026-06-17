@@ -45,34 +45,22 @@ public class SlotTemplateService {
      * Pre-computes chains of consecutive slot IDs for a given day and block size.
      * Example: for blockSize=2, day=MONDAY, returns [[slot1_id, slot2_id], [slot2_id, slot3_id], ...]
      * These chains are used by the solver to find valid consecutive placement options.
+     *
+     * NOTE: Consecutiveness is determined by position in the filtered (non-break) slot list,
+     * NOT by slot_number arithmetic. This correctly handles schedules where break slots
+     * create gaps in slot_number sequence (e.g. Period 3 = slot 3, break = slot 4,
+     * Period 4 = slot 5 — periods 3 and 4 are still schedulable back-to-back after the break).
      */
     public List<List<Long>> getConsecutiveSlotChains(String day, int blockSize) {
         List<SlotTemplate> daySlots = getActiveSlotEntitiesForDay(day);
         List<List<Long>> chains = new ArrayList<>();
 
         for (int i = 0; i <= daySlots.size() - blockSize; i++) {
-            // Verify consecutive: each slot_number must be exactly 1 more than previous
-            // (skipping break slots which don't appear in this filtered list)
-            boolean isConsecutive = true;
             List<Long> chain = new ArrayList<>();
-
             for (int j = 0; j < blockSize; j++) {
                 chain.add(daySlots.get(i + j).getId());
-                if (j > 0) {
-                    int prevSlotNum = daySlots.get(i + j - 1).getSlotNumber();
-                    int currSlotNum = daySlots.get(i + j).getSlotNumber();
-                    // Slots are consecutive only if they are adjacent in slot_number
-                    // (gaps caused by break slots in the original sequence break the chain)
-                    if (currSlotNum != prevSlotNum + 1) {
-                        isConsecutive = false;
-                        break;
-                    }
-                }
             }
-
-            if (isConsecutive) {
-                chains.add(chain);
-            }
+            chains.add(chain);
         }
 
         return chains;

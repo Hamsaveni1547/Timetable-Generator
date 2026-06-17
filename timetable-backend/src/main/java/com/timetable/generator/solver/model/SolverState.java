@@ -33,6 +33,23 @@ public class SolverState {
     // Subject/section assigned days: "subjectId_sectionId" -> list of days assigned
     private final Map<String, List<String>> subjectSectionAssignedDays = new HashMap<>();
 
+    // ---- Batch Lab Parallel Scheduling Support ----
+
+    // Tracks "day_slotId_sectionId" keys where a THEORY class occupies the slot.
+    // Used to prevent labs from being scheduled on top of theory classes.
+    private final Set<String> sectionTheorySlots = new HashSet<>();
+
+    // The day on which a section's lab batches are locked (all labs must share this day).
+    // sectionId -> locked day string
+    private final Map<Long, String> sectionLabDay = new HashMap<>();
+
+    // The exact slot-chain all lab batches for a section must share.
+    // sectionId -> locked List<slotId>
+    private final Map<Long, List<Long>> sectionLabSlotChain = new HashMap<>();
+
+    // Count of lab sessions assigned per section (used to release locks on unassign).
+    private final Map<Long, Integer> sectionLabSessionCount = new HashMap<>();
+
     // Current session assignments
     private final Map<SessionVariable, CandidateAssignment> assignments = new LinkedHashMap<>();
 
@@ -44,6 +61,7 @@ public class SolverState {
         Long roomId = candidate.getRoomId();
         Long sectionId = session.getSectionId();
         Long facultyId = session.getFacultyId();
+        boolean isLab = "LAB".equalsIgnoreCase(session.getRequiredRoomType());
 
         // 1. Occupancy maps
         for (Long slotId : candidate.getSlotChain()) {
@@ -51,6 +69,11 @@ public class SolverState {
             roomOccupancy.put(key, roomId);
             sectionOccupancy.computeIfAbsent(key, k -> new HashSet<>()).add(sectionId);
             facultyOccupancy.computeIfAbsent(key, k -> new HashSet<>()).add(facultyId);
+
+            // Track theory slots for section (to block labs from overlapping theory)
+            if (!isLab) {
+                sectionTheorySlots.add(day + "_" + slotId + "_" + sectionId);
+            }
         }
 
         // 2. Faculty weekly workload
@@ -77,7 +100,15 @@ public class SolverState {
         String subSecKey = session.subjectSectionKey();
         subjectSectionAssignedDays.computeIfAbsent(subSecKey, k -> new ArrayList<>()).add(day);
 
-        // 7. Track assignment
+        // 7. Lab day/slot lock: once the first lab for a section is placed, all
+        //    subsequent labs for the same section must use the same day + slot chain.
+        if (isLab) {
+            sectionLabDay.putIfAbsent(sectionId, day);
+            sectionLabSlotChain.putIfAbsent(sectionId, new ArrayList<>(candidate.getSlotChain()));
+            sectionLabSessionCount.put(sectionId, sectionLabSessionCount.getOrDefault(sectionId, 0) + 1);
+        }
+
+        // 8. Track assignment
         assignments.put(session, candidate);
     }
 
@@ -88,6 +119,7 @@ public class SolverState {
         String day = candidate.getDay();
         Long sectionId = session.getSectionId();
         Long facultyId = session.getFacultyId();
+        boolean isLab = "LAB".equalsIgnoreCase(session.getRequiredRoomType());
 
         // 1. Occupancy maps
         for (Long slotId : candidate.getSlotChain()) {
@@ -108,6 +140,11 @@ public class SolverState {
                 if (facSet.isEmpty()) {
                     facultyOccupancy.remove(key);
                 }
+            }
+
+            // Remove theory-slot tracking
+            if (!isLab) {
+                sectionTheorySlots.remove(day + "_" + slotId + "_" + sectionId);
             }
         }
 
@@ -169,7 +206,19 @@ public class SolverState {
             }
         }
 
-        // 7. Untrack assignment
+        // 7. Release lab day/slot lock when the last lab session for this section is removed
+        if (isLab) {
+            int labCount = sectionLabSessionCount.getOrDefault(sectionId, 1) - 1;
+            if (labCount <= 0) {
+                sectionLabDay.remove(sectionId);
+                sectionLabSlotChain.remove(sectionId);
+                sectionLabSessionCount.remove(sectionId);
+            } else {
+                sectionLabSessionCount.put(sectionId, labCount);
+            }
+        }
+
+        // 8. Untrack assignment
         assignments.remove(session);
     }
 }

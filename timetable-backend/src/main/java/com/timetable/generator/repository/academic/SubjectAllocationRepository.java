@@ -28,6 +28,8 @@ public interface SubjectAllocationRepository extends JpaRepository<SubjectAlloca
         SELECT a FROM SubjectAllocation a
         JOIN FETCH a.subject s
         JOIN FETCH a.section sec
+        LEFT JOIN FETCH sec.room
+        JOIN FETCH sec.department
         JOIN FETCH a.faculty f
         WHERE sec.department.id = :deptId
         AND s.semester = :semester

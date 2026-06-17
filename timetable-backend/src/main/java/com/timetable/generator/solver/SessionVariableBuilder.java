@@ -53,6 +53,19 @@ public class SessionVariableBuilder {
         Long facultyId = alloc.getFaculty().getId();
         int maxHours = ctx.getFacultyWeeklyMaxHours().getOrDefault(facultyId, alloc.getFaculty().getMaxHoursPerWeek());
 
+        // Only use the section's assigned room as preferred room if it matches the
+        // subject's required room type. A section's room_id is its assigned classroom
+        // (typically THEORY), so it must not be forced onto LAB or other specialist subjects.
+        Long preferredRoomId = null;
+        if (alloc.getSection().getRoom() != null) {
+            String sectionRoomType = alloc.getSection().getRoom().getRoomType();
+            String requiredRoomType = alloc.getSubject().getRequiredRoomType();
+            if (requiredRoomType == null || requiredRoomType.isBlank()
+                    || requiredRoomType.equalsIgnoreCase(sectionRoomType)) {
+                preferredRoomId = alloc.getSection().getRoom().getId();
+            }
+        }
+
         return SessionVariable.builder()
                 .allocationId(alloc.getId())
                 .subjectId(alloc.getSubject().getId())
@@ -68,7 +81,7 @@ public class SessionVariableBuilder {
                 .sectionId(alloc.getSection().getId())
                 .sectionName(alloc.getSection().getName())
                 .sectionStudentCount(alloc.getSection().getStudentCount())
-                .preferredRoomId(alloc.getSection().getRoom() != null ? alloc.getSection().getRoom().getId() : null)
+                .preferredRoomId(preferredRoomId)
                 .departmentId(alloc.getSection().getDepartment().getId())
                 .sessionIndex(sessionIdx)
                 .build();

@@ -56,8 +56,10 @@ export default function TimetableGrid({
   // Drag-and-drop state tracking
   const [draggedEntryId, setDraggedEntryId] = useState<number | null>(null);
 
-  // Get active schedulable slots
-  const schedulableSlots = slots.filter(s => s.isActive && !s.isBreak);
+  // All active slots sorted by slot_number — includes breaks for display
+  const allDisplaySlots = slots.filter(s => s.isActive).sort((a, b) => a.slotNumber - b.slotNumber);
+  // Only schedulable (non-break) slots — used in the override modal dropdowns
+  const schedulableSlots = allDisplaySlots.filter(s => !s.isBreak);
 
   // Filter entries to selected section
   const displayedEntries = selectedSectionId
@@ -212,10 +214,14 @@ export default function TimetableGrid({
             <thead>
               <tr>
                 <th className="timetable-corner">Day</th>
-                {schedulableSlots.map(slot => (
-                  <th key={slot.id} className="timetable-slot-header">
+                {allDisplaySlots.map(slot => (
+                  <th
+                    key={slot.id}
+                    className={slot.isBreak ? 'timetable-break-header' : 'timetable-slot-header'}
+                    style={slot.isBreak ? { minWidth: '80px', backgroundColor: 'var(--warning-light)', color: 'var(--warning)', fontStyle: 'italic' } : {}}
+                  >
                     <div>{slot.label}</div>
-                    <div style={{ fontSize: '0.65rem', color: 'var(--text-secondary)', fontWeight: 500 }}>
+                    <div style={{ fontSize: '0.65rem', color: slot.isBreak ? 'var(--warning)' : 'var(--text-secondary)', fontWeight: 500, opacity: 0.85 }}>
                       {slot.startTime.substring(0, 5)} - {slot.endTime.substring(0, 5)}
                     </div>
                   </th>
@@ -228,50 +234,78 @@ export default function TimetableGrid({
                   <td className="timetable-day-cell">
                     {day.charAt(0) + day.slice(1).toLowerCase()}
                   </td>
-                  
-                  {schedulableSlots.map(slot => {
-                    const entry = getCellEntry(day, slot.id);
-                    
+
+                  {allDisplaySlots.map(slot => {
+                    // Render break cells spanning every row
+                    if (slot.isBreak) {
+                      return (
+                        <td
+                          key={slot.id}
+                          style={{
+                            backgroundColor: 'rgba(234, 179, 8, 0.08)',
+                            borderLeft: '2px dashed rgba(234,179,8,0.4)',
+                            borderRight: '2px dashed rgba(234,179,8,0.4)',
+                            textAlign: 'center',
+                            verticalAlign: 'middle',
+                            padding: '4px 6px',
+                            minWidth: '80px'
+                          }}
+                        >
+                          <div style={{ fontSize: '0.65rem', fontWeight: 700, color: 'var(--warning)', letterSpacing: '0.05em', textTransform: 'uppercase' }}>
+                            {slot.label}
+                          </div>
+                        </td>
+                      );
+                    }
+
+                    const cellEntries = displayedEntries.filter(e => e.dayOfWeek === day && e.slotTemplateId === slot.id);
+
                     return (
-                      <td 
-                        key={slot.id} 
+                      <td
+                        key={slot.id}
                         className="timetable-grid-cell"
                         onDragOver={handleDragOver}
                         onDrop={(e) => handleDrop(e, day, slot.id)}
+                        style={{ verticalAlign: 'top', padding: cellEntries.length > 1 ? '4px' : undefined }}
                       >
-                        {entry ? (
-                          <div 
-                            draggable={isAdminOrHod}
-                            onDragStart={(e) => handleDragStart(e, entry.id)}
-                            onDoubleClick={() => handleOpenOverrideModal(entry)}
-                            className="timetable-session-card"
-                            style={{ 
-                              borderLeft: entry.isManuallyOverridden 
-                                ? '4px solid var(--warning)' 
-                                : '4px solid var(--accent)',
-                              cursor: isAdminOrHod ? 'grab' : 'default'
-                            }}
-                          >
-                            <div className="session-card-header">
-                              <span className="session-subject-code">{entry.subjectCode}</span>
-                              {entry.isManuallyOverridden && (
-                                <span 
-                                  className="override-badge-dot" 
-                                  title={`Manually Overridden by Admin: ${entry.overrideReason || 'N/A'}`}
-                                ></span>
-                              )}
-                            </div>
-                            
-                            <div className="session-subject-name">{entry.subjectName}</div>
-                            
-                            <div className="session-details-row">
-                              <span className="session-detail-item">
-                                <User size={10} /> {entry.facultyName}
-                              </span>
-                              <span className="session-detail-item">
-                                <MapPin size={10} /> {entry.roomName}
-                              </span>
-                            </div>
+                        {cellEntries.length > 0 ? (
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                            {cellEntries.map(entry => (
+                              <div
+                                key={entry.id}
+                                draggable={isAdminOrHod}
+                                onDragStart={(e) => handleDragStart(e, entry.id)}
+                                onDoubleClick={() => handleOpenOverrideModal(entry)}
+                                className="timetable-session-card"
+                                style={{
+                                  borderLeft: entry.isManuallyOverridden
+                                    ? '4px solid var(--warning)'
+                                    : entry.subjectType === 'LAB' || entry.subjectCode?.includes('LAB')
+                                      ? '4px solid #8b5cf6'
+                                      : '4px solid var(--accent)',
+                                  cursor: isAdminOrHod ? 'grab' : 'default'
+                                }}
+                              >
+                                <div className="session-card-header">
+                                  <span className="session-subject-code">{entry.subjectCode}</span>
+                                  {entry.isManuallyOverridden && (
+                                    <span
+                                      className="override-badge-dot"
+                                      title={`Manually Overridden: ${entry.overrideReason || 'N/A'}`}
+                                    ></span>
+                                  )}
+                                </div>
+                                <div className="session-subject-name">{entry.subjectName}</div>
+                                <div className="session-details-row">
+                                  <span className="session-detail-item">
+                                    <User size={10} /> {entry.facultyName}
+                                  </span>
+                                  <span className="session-detail-item">
+                                    <MapPin size={10} /> {entry.roomName}
+                                  </span>
+                                </div>
+                              </div>
+                            ))}
                           </div>
                         ) : (
                           <div className="timetable-grid-cell-empty">

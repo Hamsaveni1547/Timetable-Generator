@@ -390,6 +390,8 @@ export default function AdminRoomsPage() {
                     <option key={t} value={t}>{t}</option>
                   ))}
                   <option value="NEW_TYPE">+ Add Custom Room Type</option>
+                  <option value="THEORY">Theory</option>
+                  <option value="LAB">Lab</option>
                 </select>
                 
                 {roomType === 'NEW_TYPE' && (

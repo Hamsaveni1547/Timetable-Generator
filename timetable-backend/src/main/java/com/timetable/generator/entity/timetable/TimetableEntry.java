@@ -11,8 +11,10 @@ import java.time.LocalDateTime;
     uniqueConstraints = {
         @UniqueConstraint(name = "uq_room_day_slot",
             columnNames = {"room_id", "day_of_week", "slot_template_id", "generation_id"}),
-        @UniqueConstraint(name = "uq_section_day_slot",
-            columnNames = {"section_id", "day_of_week", "slot_template_id", "generation_id"}),
+        // subject_id is included to allow parallel lab batches:
+        // two different lab subjects can share the same section+day+slot (different student batches, different rooms)
+        @UniqueConstraint(name = "uq_section_day_slot_subject",
+            columnNames = {"section_id", "day_of_week", "slot_template_id", "generation_id", "subject_id"}),
         @UniqueConstraint(name = "uq_faculty_day_slot",
             columnNames = {"faculty_id", "day_of_week", "slot_template_id", "generation_id"})
     }
